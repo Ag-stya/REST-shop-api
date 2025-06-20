@@ -45,6 +45,18 @@ pipeline {
                 }
             }
         }
+        stage('Debug Trivy') {
+            steps {
+                echo '🔎 Verifying Trivy binary and version in Jenkins...'
+                sh 'which trivy'
+                sh 'trivy --version'
+                sh 'trivy fs --help'
+            }
+        }
+            
+            
+              
+
 
         stage('Trivy File System Scan') {
             steps {
