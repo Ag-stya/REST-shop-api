@@ -49,7 +49,7 @@ pipeline {
         stage('Trivy File System Scan') {
             steps {
                 echo '🔍 Running Trivy Scan...'
-                sh 'trivy fs . --format table --output trivy-fs-report.txt'
+                sh '/usr/bin/trivy fs . --format table --output trivy-fs-report.txt'
             }
         }
 
