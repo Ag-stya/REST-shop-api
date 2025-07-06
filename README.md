@@ -1,189 +1,124 @@
-# RESTful API Shop - Node.js & MongoDB Project
+# RESTful API Shop - Node.js, MongoDB, and Redis
 
-A robust **RESTful API** for e-commerce-style operations built with **Node.js**, **Express**, and **MongoDB**. It supports full CRUD functionality for products and orders, JWT-based user authentication, and integrates a modern DevOps CI/CD pipeline using Jenkins.
+A robust, high-performance RESTful API built with Node.js, Express, and MongoDB for e-commerce-style operations. It now includes **Redis integration for caching, rate limiting, and JWT blacklisting**, delivering improved speed, security, and reliability.
 
-> 🚀 Built by **Agastya Srivastava**.
+🚀 Built by Agastya Srivastava
 
 ---
 
-## 🔧 Features
+## 🔧 Key Features
 
-* ✅ User registration and JWT login
-* ✅ Product and Order CRUD operations
-* ✅ Secure password hashing using `bcrypt`
-* ✅ File uploads using `multer`
-* ✅ MVC folder structure
-* ✅ Centralized error handling and logging using `morgan`
-* ✅ Environment variable management using `dotenv`
-* ✅ CI/CD integration with **Jenkins**, **SonarQube**, **OWASP Dependency Check**, **Trivy**, and optional **Docker Compose**
+✅ User registration and secure JWT login  
+✅ Product and Order CRUD operations  
+✅ Secure password hashing using `bcrypt`  
+✅ Image uploads and resizing with `multer` + `sharp`  
+✅ Redis-powered features:
+- 🔥 Caching for `/products` and individual product routes
+- 🚀 Fast repeated access via Redis cache
+- 🛡️ JWT blacklist for secure logout
+- ⚡ Global rate limiting per IP (60s window)
+✅ MVC folder structure  
+✅ Centralized error handling and logging using `morgan`  
+✅ Environment variable management with `dotenv`  
+✅ CI/CD integration with Jenkins, SonarQube, Trivy, OWASP Dependency Check  
+✅ Optional Docker deployment
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer       | Tech                                |
-| ----------- | ----------------------------------- |
-| Backend     | Node.js, Express.js                 |
-| Database    | MongoDB with Mongoose ODM           |
-| Security    | bcrypt, JWT                         |
-| File Upload | multer                              |
-| Logging     | morgan                              |
-| CI/CD       | Jenkins, SonarQube, Trivy, OWASP DC |
-| Deployment  | Docker (Optional)                   |
+| Layer       | Tech                           |
+|------------|--------------------------------|
+| Backend     | Node.js, Express.js            |
+| Database    | MongoDB with Mongoose ODM      |
+| Caching     | Redis                          |
+| Security    | Bcrypt, JWT, JWT Blacklisting  |
+| File Upload | Multer, Sharp                  |
+| Logging     | Morgan                         |
+| DevOps      | Jenkins, SonarQube, Trivy, OWASP DC |
+| Deployment  | Docker (optional)              |
 
 ---
 
-## 📁 API Endpoints
+## 🧾 API Endpoints
 
 ### 👤 User
-
-| Method | Endpoint       | Description         | Access |
-| ------ | -------------- | ------------------- | ------ |
-| POST   | /user/signup   | Register new user   | Public |
-| POST   | /user/login    | Login existing user | Public |
-| DELETE | /user/\:userId | Delete user         | Admin  |
+| Method | Endpoint        | Description         | Access      |
+|--------|------------------|---------------------|-------------|
+| POST   | `/user/signup`   | Register new user   | Public      |
+| POST   | `/user/login`    | Login user          | Public      |
+| POST   | `/user/logout`   | Logout user (JWT blacklist) | Authenticated |
+| DELETE | `/user/:userId`  | Delete user         | Admin       |
 
 ### 📦 Products
-
-| Method | Endpoint              | Description          | Access        |
-| ------ | --------------------- | -------------------- | ------------- |
-| GET    | /products             | Get all products     | Public        |
-| POST   | /products             | Add new product      | Authenticated |
-| GET    | /products/\:productId | Get product by ID    | Public        |
-| PATCH  | /products/\:productId | Update product by ID | Authenticated |
-| DELETE | /products/\:productId | Delete product by ID | Authenticated |
+| Method | Endpoint               | Description              | Access      |
+|--------|------------------------|--------------------------|-------------|
+| GET    | `/products`            | Get all products (cached) | Public      |
+| POST   | `/products`            | Add new product           | Authenticated |
+| GET    | `/products/:productId` | Get product by ID (cached) | Public      |
+| PATCH  | `/products/:productId` | Update product by ID      | Authenticated |
+| DELETE | `/products/:productId` | Delete product by ID      | Authenticated |
 
 ### 🧾 Orders
+| Method | Endpoint             | Description             | Access      |
+|--------|----------------------|-------------------------|-------------|
+| GET    | `/orders`            | Get all orders          | Authenticated |
+| POST   | `/orders`            | Create new order        | Authenticated |
+| GET    | `/orders/:orderId`   | Get order by ID         | Authenticated |
+| DELETE | `/orders/:orderId`   | Delete order by ID      | Authenticated |
 
-| Method | Endpoint          | Description        | Access        |
-| ------ | ----------------- | ------------------ | ------------- |
-| GET    | /orders           | Get all orders     | Authenticated |
-| POST   | /orders           | Create new order   | Authenticated |
-| GET    | /orders/\:orderId | Get order by ID    | Authenticated |
-| DELETE | /orders/\:orderId | Delete order by ID | Authenticated |
+---
+
+## 🚀 Redis-Powered Features
+
+### 1. 🧠 Redis Caching
+- Caches product list (`/products`)
+- Caches individual product (`/products/:id`)
+- Auto-expiry after 60–120 seconds
+- Reduces DB load and improves performance
+
+### 2. 🛡️ JWT Blacklist for Logout
+- Secure logout by storing tokens in Redis blacklist
+- Prevents reuse of tokens after logout
+
+### 3. ⚡ Rate Limiting
+- IP-based rate limit (e.g. 60s window)
+- Blocks excessive requests from same IP
+- Redis TTLs manage expiration efficiently
 
 ---
 
 ## ⚙️ CI/CD Pipeline - Jenkins
 
-A complete Jenkins pipeline is used to automate building, testing, and analyzing the application code.
+Full DevOps automation using Jenkins, Trivy, SonarQube, and Dependency Check:
 
 ### 🧪 Jenkinsfile Stages
-
 1. **Clone Repository**
-
-   * Pulls code from GitHub
-
 2. **SonarQube Code Quality Analysis**
-
-   * Uses `sonar-scanner` to scan for code smells, bugs, vulnerabilities
-
 3. **Install Dependencies**
-
-   * Runs `npm install`
-
 4. **OWASP Dependency Check**
-
-   * Checks for known vulnerabilities in dependencies
-
-5. **Sonar Quality Gate**
-
-   * Validates against quality gates
-
-6. **Trivy File System Scan**
-
-   * Scans filesystem for security issues with Trivy
-   * Generates `trivy-fs-report.txt`
-
-7. **Deploy via Docker Compose** *(optional)*
-
-   * Executes if `docker-compose.yml` exists in repo
-
+5. **Sonar Quality Gate Validation**
+6. **Trivy Filesystem Scan**
+7. **Optional Docker Compose Deployment**
 8. **Post Build Cleanup**
-
-   * Cleans Jenkins workspace
-
-### Tools Required
-
-* Jenkins (Installed on EC2 or local)
-* SonarQube server (running on port 9000)
-* Trivy installed on Jenkins server (v0.63.0)
-* OWASP Dependency-Check plugin installed in Jenkins
-
----
-
-## 🔃 How to Setup CI/CD
-
-1. **Push the code to GitHub**
-
-   ```bash
-   git clone https://github.com/Ag-stya/REST-shop-api.git
-   ```
-
-2. **Create a Jenkins Pipeline Project**
-
-   * Add GitHub URL
-   * Use a valid `Jenkinsfile` in root directory
-
-3. **Install Jenkins Plugins**
-
-   * SonarQube Scanner
-   * Dependency Check
-   * Pipeline Utility Steps
-
-4. **Configure Jenkins**
-
-   * Manage Jenkins → Global Tool Configuration
-
-     * Add SonarQube → ID: `Sonar`
-     * Add `sonar-scanner`
-     * Set `NodeJS`, etc.
-
-5. **Configure SonarQube**
-
-   * Create new project
-   * Generate token
-   * Use `sonar.projectKey` and `sonar.login` in scanner script
-
-6. **Run Jenkins Build**
-
-   * Make sure `.tpl` or report files (like `html.tpl`) are present if needed
 
 ---
 
 ## 🚀 Installation & Running Locally
 
-1. **Clone Repo**
-
 ```bash
 git clone https://github.com/Ag-stya/REST-shop-api.git
 cd REST-shop-api
-```
-
-2. **Install Dependencies**
-
-```bash
 npm install
-```
-
-3. **Environment Variables**
-   Create a `.env` file:
-
-```env
+Setup .env
 PORT=3000
-MONGO_URI=mongodb+srv://sagastya58:iF8UQYUdHbfgli0b@cluster0.rl2vvoz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-JWT_KEY=SECRET
-```
+MONGO_URI=your-mongo-uri
+JWT_KEY=your-secret
 
-4. **Start the Server**
-
-```bash
-npm start
-```
-
-API will be running at: `http://localhost:3000`
-
----
+START SERVER_npm start
+## Redis Setup
+brew install redis
+redis-server
 
 ## 📎 Contact
 
