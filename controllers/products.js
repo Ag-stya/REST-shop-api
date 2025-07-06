@@ -1,211 +1,154 @@
-const express = require('express');
-const Order= require('../models/order')
-const Product= require('../models/product')
-const mongoose= require('mongoose');
+const Product = require('../models/product');
+const mongoose = require('mongoose');
+const redisClient = require('../redis/cacheClient'); 
+const { response } = require('../app');
 
-exports.products_get_all=(req,res,next)=>{
-    //idhar saare products frrom DB laenge
-        Product.find().select('name price _id productImage').exec().then(docs =>{
-            const response= {
-                count: docs.length,
-                products: docs.map(doc=>{
-                    return{
-                        _id: doc._id,
-                        name:doc.name,
-                        price: doc.price,
-                        productImage: doc.productImage,
-                        request:{
-                            type: 'GET',
-                            url: 'http://localhost:3000/products/' + doc._id
-                        }
-                    }
-                })
-            }
-            console.log(docs);
-            if(docs.length>0){
-                res.status(200).json(response);
-            }
-            else{
-                res.status(404).json({
-                    message:"no entries found"
-                })
-            }
-        })
-        .catch(err =>{
-            console.log(err);
-            res.status(500).json({
-                error:{
-                    name:err.name,
-                    message: err.message
-                }
-            });
-        })
-        
-    
-        
-};
+const CACHE_KEY = 'products:all';
+const CACHE_TTL = 60; // 1 minute
 
+// GET all products with Redis cache
+exports.products_get_all = async (req, res, next) => {
+  try {
+    const cached = await redisClient.get(CACHE_KEY);
 
-exports.products_create_product=(req,res,next)=>{
-    console.log(req.file);
-        const product= new Product({
-            _id: new mongoose.Types.ObjectId(),
-            name : req.body.name,
-            price: req.body.price,
-            productImage: req.file.path
-        });
-        // save the product to the database
-        product.save()
-            .then(result=>{
-                //LOG THE SAVED PRODUCT TO THE SERVER CONSOLE
-                console.log('Product saved successfully',result);
-    
-                res.status(201).json({
-                    message: 'Handling POSt requests to /products ( Product Created)',
-                    createdProduct: {
-                        id:result._id,
-                        name:result.name,
-                        price: result.price,
-                        request:{
-                            type: 'GET',
-                            //Link to the newly created product 
-                            url: 'http://localhost:3000/products/' + result._id
-                        }
-                    }
-            
-                });
-            })
-            .catch(err=>{
-                //LOG THE ERROR TO THE SERVER CONSOLE
-                console.log('ERROR SAVING THE PRODUCT',err)
-                res.status(500).json({
-                    error:{
-                        name:err.name,
-                        message: err.message
-                    }
-                });
-            });
-        
-};
-
-exports.products_get_product=(req,res,next)=>{
-    const id= req.params.productId;
-        console.log('Received productID from URL:',id,"(Type:", typeof id,")");
-        //CHECK FOR VALID ObjectId fromat
-        if(!mongoose.Types.ObjectId.isValid(id)){
-            console.log("Invalid ObjectId fromat for:", id);
-            return res.status(400).json({
-                message:" Invalid productId fromat",
-                receivedId: id
-            })
-    
-        }
-        Product.findById(id)
-        .select('name price _id productImage') //select only specific fields
-        .exec()   //exec returns  promise, allowing then and catch
-        .then(doc=>{
-            //log the retrieved  document to the server console
-            console.log("FROM DATABASE:"+doc);
-    
-            //check if the document was found(not null)
-            if(doc){
-                //if found, send the document with 200 OK status
-                res.status(200).json(doc);
-            }else{
-                console.log('no valid entry found for the requested productId:' ,id)
-                res.status(404).json({
-                    messsage: "No valid entry found for this id"
-                })
-            }
-            
-        })
-        .catch(err=>{
-            console.log("Error fetching the product by id",err);
-            res.status(500).json({
-                name: err.name,
-                messsage: err.messsage,
-                //USEFUL FOR CAST ERRORS
-                kind: err.kind,
-                value: err.value,
-                path: err.path,
-                stringValue: err.stringValue
-    
-    
-            });
-        });
-};
-
-
-exports.products_update_product=(req,res,next)=>{
-    const id = req.params.productId;
-        const updateOptions = {};
-        for(const ops of req.body){
-            updateOptions[ops.propName]= ops.value;
-        }
-        Product.findByIdAndUpdate({_id:id}, {$set: updateOptions})
-            .exec()
-            .then(result =>{
-                console.log(result);
-                res.status(200).json({
-                    result: 'Product updated successfully',
-                    request:{
-                        type: 'GET',
-                        url: 'http://localhost:3000/products/'+ id,
-                        body:{
-                            name : 'String',
-                            price: 'Number'
-                        }
-                    }
-                
-                });
-            })
-            .catch(err=>{
-                console.log(err);
-                res.status(500).json({
-                    name: err.name,
-                    messsage: err.messsage,
-    
-                })
-            });
-
-};
-
-exports.products_delete_product=(req,res,next)=>{
-    const id= req.params.productId;
-    const mongoose= require("mongoose");
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-            console.log("Invalid ObjectId format detected for ID:", id);
-            return res.status(400).json({
-                message: "Invalid product ID format. Please provide a valid 24-character hexadecimal string.",
-                receivedId: id
-            });
+    if (cached) {
+      console.log('Serving from Redis cache');
+      return res.status(200).json(JSON.parse(cached));
     }
 
+    const products = await Product.find().select('_id name price productImage');
 
+    const response = {
+      count: products.length,
+      products: products.map(prod => ({
+        ...prod.toObject(),
+        request: {
+          type: 'GET',
+          url: `http://localhost:3000/products/${prod._id}`,
+        },
+      })),
+    };
 
-    Product.deleteOne({_id:id})
-        .exec()
-        .then(result=>{
-            res.status(200).json({
-                result : 'Product deleted successfully',
-                request:{
-                    type: 'POST',
+    await redisClient.setEx(CACHE_KEY, CACHE_TTL, JSON.stringify(response));
+    console.log('Saved to Redis');
+
+    res.status(200).json(response);
+  } catch (err) {
+    console.error('Cache Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+//Create product and invalidate cache
+exports.products_create_product = async (req, res, next) => {
+  try {
+    const product = new Product({
+      _id: new mongoose.Types.ObjectId(),
+      name: req.body.name,
+      price: req.body.price,
+      productImage: req.file?.path,
+    });
+
+    const result = await product.save();
+    await redisClient.del(CACHE_KEY); // invalidate cache
+
+    res.status(201).json({
+      message: 'Product created',
+      createdProduct: {
+        ...result.toObject(),
+        request: {
+          type: 'GET',
+          url: `http://localhost:3000/products/${result._id}`,
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Get product by ID (no caching yet)
+exports.products_get_product = async (req, res, next) => {
+    const productId = req.params.productId;
+    const cacheKey=`product:${productId}`;
+    const TTL=120;
+    try {
+        const cachedProduct=await redisClient.get(cacheKey);
+        if (cachedProduct) {
+            console.log(`Serving from Redis cache  for product-${productId}`)
+            return res.status(200).json(JSON.parse(cachedProduct));
+        }
+        else{
+            console.log(`Fetching product-${productId} from MongoDB`);
+            const id = req.params.productId;
+            const product = await Product.findById(id).select('name price _id productImage');
+            if (product) {
+                res.status(200).json({
+                    product,
+                    request: {
+                    type: 'GET',
                     url: 'http://localhost:3000/products',
-                    body:{
-                        name:'String',
-                        price:'Number'
-                    }
-                }
-            });
-                
-        })
-        .catch(err=>{
-            console.log(err);
-            res.status(500).json({
-                error:{
-                    name:err.name,
-                    message: err.message
-                }
-            });
-        })
+                    },
+                });
+                await redisClient.setEx(cacheKey,TTL,JSON.stringify(response)); // Cache the product
+                console.log(`Product-${productId} cached for ${TTL} seconds`);
+                res.status(200).json(response);
+            } 
+            else {
+
+                res.status(404).json({ message: 'No valid entry found' });
+            }
+        }
+        
+    } 
+    catch (err) {
+        res.status(500).json({ error: err.message });
+  }
+};
+
+// Update product and invalidate cache
+exports.products_update_product = async (req, res, next) => {
+  try {
+    const id = req.params.productId;
+    const updateOps = {};
+
+    for (const ops of req.body) {
+      updateOps[ops.propName] = ops.value;
+    }
+
+    await Product.updateOne({ _id: id }, { $set: updateOps });
+    await redisClient.del(CACHE_KEY); //invalidate cache
+    await redisClient.del(`product:${id}`);        //invalidate specific product cache
+
+    res.status(200).json({
+      message: 'Product updated',
+      request: {
+        type: 'GET',
+        url: `http://localhost:3000/products/${id}`,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+//Delete product and invalidate cache
+exports.products_delete_product = async (req, res, next) => {
+  try {
+    const id = req.params.productId;
+    await Product.deleteOne({ _id: id });
+    await redisClient.del(CACHE_KEY); //invalidate cache
+    await redisClient.del(`product:${id}`);  
+
+    res.status(200).json({
+      message: 'Product deleted',
+      request: {
+        type: 'POST',
+        url: 'http://localhost:3000/products',
+        body: { name: 'String', price: 'Number' },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };

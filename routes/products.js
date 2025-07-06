@@ -4,14 +4,19 @@ const mongoose= require('mongoose');
 const Product= require('../models/product');
 const multer = require('multer');
 const checkAuth = require('../middleware/check-auth');
-const Controller=require('../controllers/products')
+const Controller=require('../controllers/products');
+const path = require('path');
 const storage= multer.diskStorage({
     destination: function(req,file,cb){
         cb(null,'./uploads');
 
     },
     filename: function(req,file,cb){
-        cb(null,new Date().toISOString()+file.originalname)
+        const timestamp = Date.now(); // safer than Date().toISOString()
+        const ext = path.extname(file.originalname);
+        const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, '_'); // clean name
+        cb(null, `${timestamp}_${base}${ext}`);
+        
 
     }
 });

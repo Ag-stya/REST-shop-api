@@ -1,17 +1,28 @@
 const jwt= require("jsonwebtoken");
-module.exports= (req,res,next)=>{
-    try{
-        const token= req.headers.authorization.split(" ")[1]; 
-        console.log(token);
-        const decoded= jwt.verify(token, process.env.JWT_KEY);
-        req.userData= decoded;
-        next();
+const redisClient= require('../redis/cacheClient');
+module.exports= async (req,res,next)=>{
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ message: 'Auth failed: Missing token' });
+        }
 
-    }catch(error){
-        return res.status(401).json({
-            message: "Auth failed"
-        });
+        const token = authHeader.split(' ')[1];
+
+        //  Check Redis blacklist first
+        const isBlacklisted = await redisClient.get(`blacklist:${token}`);
+        if (isBlacklisted) {
+            return res.status(401).json({ message: 'Auth failed: Token blacklisted' });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_KEY);
+        req.userData = decoded;
+        req.token = token; // needed for logout
+        next();
+    } 
+    catch (error) {
+        return res.status(401).json({ message: 'Auth failed: Invalid token' });
     }
 
 
-}
+};
